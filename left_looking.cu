@@ -53,65 +53,72 @@ __device__ void sgemm_tile(const float* rA1, const float* rA2, float* rA3)
 /*
  * Function to store full tile from shared memory to global memory  
  */
-__device__ void store_full(const float* s_data, float* g_data)
-{
-    int row = blockIdx.y * TILE_SIZE + threadIdx.y;
-    int column = blockIdx.x * TILE_SIZE + threadIdx.x;
-
-    g_data[row * TILE_SIZE + column] = s_data[row * TILE_SIZE + column];
-
-    __syncthreads();
-}
+ __device__ void store_full(const float* s_data, float* g_data)
+ {
+     int g_row = blockIdx.y * TILE_SIZE + threadIdx.y;
+     int g_column = blockIdx.x * TILE_SIZE + threadIdx.x;
+ 
+     int l_row = threadIdx.y;
+     int l_column = threadIdx.x;
+ 
+     g_data[g_row * TILE_SIZE + g_column] = s_data[l_row * TILE_SIZE + l_column];
+ 
+     __syncthreads();
+ }
 
 
 /*
  * Function to store lower triangular tile from shared memory to global memory  
  */
-__device__ void store_lower(const float* s_data, float* g_data)
-{
-    int row = blockIdx.y * TILE_SIZE + threadIdx.y;
-    int column = blockIdx.x * TILE_SIZE + threadIdx.x;
-
-    if(column <= row)
-        g_data[row * TILE_SIZE + column] = s_data[row * TILE_SIZE + column];
-    else
-        g_data[row * TILE_SIZE + column] = 0;
-
-    __syncthreads();
-}
+ __device__ void store_lower(const float* s_data, float* g_data)
+ {
+     int g_row = blockIdx.y * TILE_SIZE + threadIdx.y;
+     int g_column = blockIdx.x * TILE_SIZE + threadIdx.x;
+ 
+     int l_row = threadIdx.y;
+     int l_column = threadIdx.x;
+ 
+     if(column <= row)
+         g_data[g_row * TILE_SIZE + g_column] = s_data[l_row * TILE_SIZE + l_column];
+     else
+         g_data[g_row * TILE_SIZE + g_column] = 0;
+ 
+     __syncthreads();
+ }
 
 
 /*#include <math.h>       // needed for the function sqrtf()
 # define tile_width 32*/
 
 /*
-* Function to perform Choleshky Factorization for a tile
-*/
-__device__ void spotrf_tile(float* t_A)
-{
-    int ty = blockIdx.x*blockdim.x + threadIdx.x;  // col
-    int tx = blockIdx.y*blockdim.y + threadIdx.y; // row
-
-    for(int k{0};k<tile_width;k++){
-        // square root of diagonal elements
-
-        if(tx==0 && ty==0)
-            t_A[k*tile_width + k] = sqrtf(t_A[k*tile_width + k]);
-        __syncthreads();
-
-        // division step done parallaly
-        if(ty<=tx && tx<tile_width && ty<tile_width)
-        {
-            t_A[(tx+1)*tile_width + k]/= t_A[k*tile_width + k];
-        }
-        __syncthreads();
-
-        if(ty<=tx && tx<tile_width && ty<tile_width){
-            t_A[(tx+1)*tile_width + (ty+1)]-= t_A[(tx+1)*tile_width + k]*t_A[(ty+1)*tile_width + k];
-        }
-        __syncthreads();
-    }
-}
+ * Function to perform Choleshky Factorization for a tile
+ */
+ __device__ void spotrf_tile(float* t_A)
+ {
+     int ty = blockIdx.x*blockDim.x + threadIdx.x;  // col
+     int tx = blockIdx.y*blockDim.y + threadIdx.y; // row
+ 
+     for(int k{0};k<TILE_SIZE;k++){
+         // square root of diagonal elements
+ 
+         if(tx==0 && ty==0)
+             t_A[k*TILE_SIZE + k] = sqrtf(t_A[k*TILE_SIZE + k]);
+         __syncthreads();
+ 
+         // division step done parallaly
+         if(ty<=tx && tx<TILE_SIZE - 1 && ty<TILE_SIZE - 1 && ty == k)
+         {
+             t_A[(tx+1)*TILE_SIZE + k]/= t_A[k*TILE_SIZE + k];
+         }
+         __syncthreads();
+ 
+         if(ty<=tx && tx<TILE_SIZE - 1 && ty<TILE_SIZE - 1 && ty >= k)
+         {
+             t_A[(tx+1)*TILE_SIZE + (ty+1)]-= t_A[(tx+1)*TILE_SIZE + k]*t_A[(ty+1)*TILE_SIZE + k];
+         }
+         __syncthreads();
+     }
+ }
 
 /*
 * Function to perform triangular solve for a tile 
