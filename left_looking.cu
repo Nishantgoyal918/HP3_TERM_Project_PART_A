@@ -19,7 +19,7 @@ __device__ void ssyrk_tile(float* rA1, float* rA2)
     {
         float updatedValue = rA2[row * TILE_SIZE + column];
 
-        for(int k=0; i<TILE_SIZE; k++)
+        for(int k=0; k<TILE_SIZE; k++)
         {
             updatedValue -= rA1[row * TILE_SIZE + k] * rA1[column * TILE_SIZE + k];
         }
@@ -27,6 +27,7 @@ __device__ void ssyrk_tile(float* rA1, float* rA2)
         rA2[row * TILE_SIZE + column] = updatedValue;
     }
 }
+
 
 
 /*
@@ -47,7 +48,7 @@ __device__ void sgemm_tile(const float* rA1, const float* rA2, float* rA3)
     }
 
     rA3[row * TILE_SIZE + column] = updatedValue;
-} 
+}
 
 
 /*
