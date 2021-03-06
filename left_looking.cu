@@ -47,7 +47,7 @@ __device__ void sgemm_tile(const float* rA1, const float* rA2, float* rA3)
     }
 
     rA3[row * TILE_SIZE + column] = updatedValue;
-}
+} 
 
 
 /*
@@ -87,8 +87,6 @@ __device__ void sgemm_tile(const float* rA1, const float* rA2, float* rA3)
  }
 
 
-/*#include <math.h>       // needed for the function sqrtf()
-# define tile_width 32*/
 
 /*
  * Function to perform Choleshky Factorization for a tile
@@ -126,25 +124,22 @@ __device__ void sgemm_tile(const float* rA1, const float* rA2, float* rA3)
 
 __device__ void strsm_tile(float *t_A1, float *t_A2)
 {
-    // t_A2 is current unkonown 
-    int ty = blockIdx.x*blockdim.x + threadIdx.x;
-    int tx = blockIdx.y*blockdim.y + threadIdx.y;
+	// t_A2 is current unkonown 
+	int ty = blockIdx.x*TILE_SIZE + threadIdx.x;
+	int tx = blockIdx.y*TILE_SIZE + threadIdx.y;
+	
+	for(int i{0};i<TILE_SIZE;i++){
+		if(ty==0){
+			t_A2[tx*TILE_SIZE + i]/= t_A1[i*TILE_SIZE + i];
+		}
+		__syncthreads();
 
-    // use syncthreads to remove both top loops
-    for(int m{0};m<tile_width;m++){
-        for(int k{0};k<tile_width;k++){
-            if(tx==0 && ty==0)
-                t_A2[m*tile_width +k]/= t_A1[k*tile_width+k];
-            __syncthreads();
-    
-            if(ty<=tx && tx<tile_width && ty<tile_width)
-            {
-                t_A2[m*tile_width + tx+1+k]-= t_A2[m*tile_width + k]*t_A1[(tx+1+k)*tile_width + k];
-                __syncthreads();
-            }
-
-        }
-    }
+		if(ty>i && i<TILE_SIZE-1)
+        {
+			t_A2[tx*TILE_SIZE+ty]-= t_A2[tx*TILE_SIZE + i]*t_A1[ty*TILE_SIZE + i];
+		}
+		__syncthreads();
+	}
  
 }
 
@@ -156,11 +151,14 @@ __device__ void load_full(float *t_A,float * S_A)
 {
     // assigning a 2-D array in shared memory 
 
-    int ty = blockIdx.x*blockdim.x + threadIdx.x;  // col
-    int tx = blockIdx.y*blockdim.y + threadIdx.y; // row
+    int g_ty = blockIdx.x*blockDim.x + threadIdx.x;  // col
+    int g_tx = blockIdx.y*blockDim.y + threadIdx.y; // row
 
-    if(tx<tile_width && ty<tile_width)
-        S_A[tx*tile_width+ty] = t_A[tx*tile_width + ty];
+    int l_tx = threadIdx.x;
+    int l_ty = threadIdx.y;
+
+    if(tx<TILE_SIZE && ty<TILE_SIZE)
+        S_A[l_tx * TILE_SIZE + l_ty] = t_A[tx*TILE_SIZE + ty];
     __syncthreads();
 
 }
