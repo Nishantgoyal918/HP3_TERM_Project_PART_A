@@ -79,7 +79,7 @@ __device__ void sgemm_tile(const float* rA1, const float* rA2, float* rA3)
      int l_row = threadIdx.y;
      int l_column = threadIdx.x;
  
-     if(column <= row)
+     if(l_column <= l_row)
          g_data[g_row * TILE_SIZE + g_column] = s_data[l_row * TILE_SIZE + l_column];
      else
          g_data[g_row * TILE_SIZE + g_column] = 0;
@@ -158,8 +158,8 @@ __device__ void load_full(float *t_A,float * S_A)
     int l_tx = threadIdx.x;
     int l_ty = threadIdx.y;
 
-    if(tx<TILE_SIZE && ty<TILE_SIZE)
-        S_A[l_tx * TILE_SIZE + l_ty] = t_A[tx*TILE_SIZE + ty];
+    if(l_tx<TILE_SIZE && l_ty<TILE_SIZE)
+        S_A[l_tx * TILE_SIZE + l_ty] = t_A[g_tx*TILE_SIZE + g_ty];
     __syncthreads();
 
 }
