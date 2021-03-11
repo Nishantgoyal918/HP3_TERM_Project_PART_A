@@ -175,3 +175,129 @@ __device__ void load_full(float *t_A,float * S_A)
     __syncthreads();
 
 }
+
+
+/*
+ * Left looking kernel code (without loop unrolling)
+ */
+ __global__ void left_looking_kernel(float *g_in, int N)
+ {
+ 
+     // ((N / NB) + 2) * sizeof(TILE) amount of shared memory
+     extern __shared__ float s_current_panel[];
+ 
+ 
+     int l_tid = threadIdx.y * (blockDim.x) + threadIdx.x; // local thread id
+     int tx = threadIdx.x;
+     int ty = threadIdx.y;
+ 
+ 
+     // i: current panel
+     for(int i=0; i<(N / TILE_SIZE); i++)
+     {
+ 
+         // loading current panel in shared memory
+         for(int j=0; j<(N / TILE_SIZE); j++)
+         {
+             int access_row = j * blockDim.y + threadIdx.y;
+             s_current_panel[j * TILE_SIZE * TILE_SIZE + l_tid] = g_in[access_row * N + i * TILE_SIZE + tx];
+         }
+         __syncthreads();
+ 
+ 
+             
+         // UPDATE CURRENT PANEL using preceding panels
+         // j: preceding panel no. 
+         for(int j=0; j<i; j++)
+         {
+             
+             int row = i * TILE_SIZE + ty;
+             // Loading data for rank-k update in shared memory
+             s_current_panel[N * TILE_SIZE + l_tid] = g_in[row * N + j * TILE_SIZE + tx];
+             __syncthreads();
+ 
+ 
+             // Rank-k update
+             float *rA1 = &s_current_panel[N*TILE_SIZE + 0];
+             float *rA2 = &s_current_panel[i * TILE_SIZE * TILE_SIZE];
+             
+             ssyrk_tile(rA1, rA2);
+             __syncthreads();
+ 
+ 
+             // Applying SGEMM 
+             for(int k=i+1; k<(N / TILE_SIZE); k++)
+             {
+                 // Loading data for sgemm in shared memory
+                 int access_row = (k) * TILE_SIZE + ty;
+                 s_current_panel[(N + 1) * TILE_SIZE + l_tid] = g_in[access_row * N + j * TILE_SIZE + tx];
+                 __syncthreads();
+ 
+ 
+                 // sgemm
+                 float *rA1 = &s_current_panel[N * TILE_SIZE];
+                 float *rA2 = &s_current_panel[(N + 1) * TILE_SIZE];
+                 float *rA3 = &s_current_panel[k * TILE_SIZE * TILE_SIZE];
+ 
+                 sgemm_tile(rA1, rA2, rA3);
+                 __syncthreads();
+             }
+ 
+         }
+ 
+ 
+ 
+         // FACTORIZE CURRENT PANEL
+         
+         // applying spotrf on the tile (i, i)
+         float *rA1 = &s_current_panel[i * TILE_SIZE * TILE_SIZE];
+ 
+         spotrf_tile(rA1);
+         __syncthreads();
+ 
+         
+         // Applying TRSM
+         for(int k=i+1; k<(N / TILE_SIZE); k++)
+         {
+             // trsm
+             float *rA2 = &s_current_panel[k * TILE_SIZE * TILE_SIZE];
+ 
+             strsm_tile(rA1, rA2);
+             __syncthreads();
+         }
+ 
+ 
+ 
+         // STORING the current panel back in the global memory
+         for (int k=0; k<(N / TILE_SIZE); k++)
+         {
+             // store zero for tiles above the tile (i, i)
+             if(k<i)
+             {
+                 g_in[(k * TILE_SIZE + ty) * N + (i * TILE_SIZE) + tx] = 0.0;
+             }
+             else
+             {
+                 // store lower for tile (i, i)
+                 if(k == i)
+                 {
+                     if(tx <= ty)
+                     {
+                         g_in[(k * TILE_SIZE + ty) * N + (i * TILE_SIZE) + tx] = s_current_panel[k * TILE_SIZE * TILE_SIZE + ty * TILE_SIZE + tx];
+                     }
+                     else
+                     {
+                         g_in[(k * TILE_SIZE + ty) * N + (i * TILE_SIZE) + tx] = 0.0;
+                     }
+                 }
+                 else // store full for tiles below the tile (i, i)
+                 {
+                     g_in[(k * TILE_SIZE + ty) * N + (i * TILE_SIZE) + tx] = s_current_panel[k * TILE_SIZE * TILE_SIZE + ty * TILE_SIZE + tx];
+                 }
+             }
+         }
+         
+ 
+         __syncthreads();
+     }
+ }
