@@ -10,6 +10,7 @@
  * Function to perform rank-k update 
  * half of the threads working
  */
+
 __device__ void ssyrk_tile(float* rA1, float* rA2) 
 {
     int row = blockIdx.y * TILE_SIZE + threadIdx.y;
@@ -28,12 +29,11 @@ __device__ void ssyrk_tile(float* rA1, float* rA2)
     }
 }
 
-
-
 /*
  * Function to perform general matrix multiplication 
  * DOUBT: I think calculation is given wrong in paper it should be rA2[k][n] 
  */
+
 __device__ void sgemm_tile(const float* rA1, const float* rA2, float* rA3)
 {
     int row = blockIdx.y * TILE_SIZE + threadIdx.y;
@@ -44,17 +44,17 @@ __device__ void sgemm_tile(const float* rA1, const float* rA2, float* rA3)
 
     for(int i=0; i<TILE_SIZE; i++)
     {
-        updatedValue -= rA1[row * TILE_SIZE + i] * rA2[i * TILE_SIZE + column];
+        updatedValue -= rA1[row * TILE_SIZE + i] * rA2[column * TILE_SIZE + i];
     }
 
     rA3[row * TILE_SIZE + column] = updatedValue;
 }
 
-
 /*
  * Function to store full tile from shared memory to global memory  
  */
- __device__ void store_full(const float* s_data, float* g_data)
+ 
+__device__ void store_full(const float* s_data, float* g_data)
  {
      int g_row = blockIdx.y * TILE_SIZE + threadIdx.y;
      int g_column = blockIdx.x * TILE_SIZE + threadIdx.x;
@@ -67,11 +67,11 @@ __device__ void sgemm_tile(const float* rA1, const float* rA2, float* rA3)
      __syncthreads();
  }
 
-
 /*
  * Function to store lower triangular tile from shared memory to global memory  
  */
- __device__ void store_lower(const float* s_data, float* g_data)
+ 
+__device__ void store_lower(const float* s_data, float* g_data)
  {
      int g_row = blockIdx.y * TILE_SIZE + threadIdx.y;
      int g_column = blockIdx.x * TILE_SIZE + threadIdx.x;
@@ -87,11 +87,10 @@ __device__ void sgemm_tile(const float* rA1, const float* rA2, float* rA3)
      __syncthreads();
  }
 
-
-
 /*
  * Function to perform Choleshky Factorization for a tile
  */
+ 
  __device__ void spotrf_tile(float* t_A)
  {
      int ty = blockIdx.x*blockDim.x + threadIdx.x;  // col
@@ -122,6 +121,7 @@ __device__ void sgemm_tile(const float* rA1, const float* rA2, float* rA3)
 /*
 * Function to perform triangular solve for a tile 
 */
+
 
 __device__ void strsm_tile(float *t_A1, float *t_A2)
 {
@@ -163,3 +163,4 @@ __device__ void load_full(float *t_A,float * S_A)
     __syncthreads();
 
 }
+
