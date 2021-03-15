@@ -98,17 +98,15 @@ __global__ void syrk_tile(float* read_data,float* rA2,int i,int j,int k,int N)
     int global_x = k*blockDim.x + threadIdx.x;
     int t_y = threadIdx.y;
     int t_x = threadIdx.x;
-    /*
     __shared__ float temp0[TILE_SIZE][TILE_SIZE+1];                        // Using shared memory to Optimize
     __shared__ float temp1[TILE_SIZE][TILE_SIZE+1];                        // Using shared memory to Optimize
     temp0[t_y][t_x] = read_data[global_x*N + i*blockDim.x + t_y];
     temp1[t_x][t_y] = read_data[global_y*N + i*blockDim.x + t_x];
     __syncthreads();
-    */
     float valueToSubtract = 0.0;
     for(int r=0;r<TILE_SIZE;r++)
     {
-        valueToSubtract+= read_data[global_x*N + i*blockDim.x + r]*read_data[global_y*N + i*blockDim.x + r];//temp0[r][t_x]*temp1[r][t_y];
+        valueToSubtract+= temp0[r][t_x]*temp1[r][t_y];
     }
     rA2[t_y*TILE_SIZE + t_x]-= valueToSubtract;
     __syncthreads();
