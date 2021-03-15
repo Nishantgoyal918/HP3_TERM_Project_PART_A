@@ -9,7 +9,7 @@ __global__ void load_full(float*,float*,int,int,int);
 __global__ void store_lower(float*,float*,int,int,int);
 __global__ void load_lower(float*,float*,int,int,int);
 __global__ void potrf_tile(float*);
-__global__ void trsm_tile(float*,float*,int,int,int);
+__global__ void trsm_tile(float*,int,int,int);
 __global__ void syrk_tile(float*,float*,int,int,int);
 void right_looking_launch_kernel(float*,int);
 
@@ -60,34 +60,34 @@ __global__ void potrf_tile(float* t_A)
             temp2 = t_A[k*TILE_SIZE + k];
         }
         __syncthreads();
-        if(t_x<t_y && t_x == k && t_x<TILE_SIZE && t_y<TILE_SIZE)
+        if(t_x<t_y && t_x == k)
         {
             t_A[t_y*TILE_SIZE + k]/= temp2;
         }
         __syncthreads();
-        if(t_x<t_y && t_x>k && t_x<TILE_SIZE && t_y<TILE_SIZE)
+        if(k<t_y && k<t_x && t_x<=t_y)
         {
             t_A[t_y*TILE_SIZE + t_x]-= t_A[t_x*TILE_SIZE + k]*t_A[t_y*TILE_SIZE + k];
         }
         __syncthreads();
     }
 }
-__global__ void trsm_tile(float *read_data,float* t_A2,int i,int j,int N)
+__global__ void trsm_tile(float *read_data,int i,int j,int N)
 {
     int global_y = j*blockDim.y + threadIdx.y;
     int global_x = i*blockDim.x + threadIdx.x;
 	int t_x = threadIdx.x;
     int t_y = threadIdx.y;
-	for(int i=0;i<TILE_SIZE;i++)
+	for(int s=0;s<TILE_SIZE;s++)
     {
-		if(t_x==i)
+		if(t_x==s)
         {
-			t_A2[t_y*TILE_SIZE + i]/= read_data[global_x*N + global_x];
+			read_data[global_y*N + global_x]/= read_data[global_x*N + global_x];
 		}
 		__syncthreads();
-		if(t_x > i)
+		if(t_x > s)
         {
-			t_A2[t_y*TILE_SIZE+t_x]-= read_data[global_x*N + global_x - t_x + i]*read_data[global_y*N + global_x - t_x + i];
+			read_data[global_y*N + global_x]-= read_data[global_x*N + global_x - t_x + s]*read_data[global_y*N + global_x - t_x + s];
 		}
 		__syncthreads();
 	}
@@ -98,15 +98,17 @@ __global__ void syrk_tile(float* read_data,float* rA2,int i,int j,int k,int N)
     int global_x = k*blockDim.x + threadIdx.x;
     int t_y = threadIdx.y;
     int t_x = threadIdx.x;
+    /*
     __shared__ float temp0[TILE_SIZE][TILE_SIZE+1];                        // Using shared memory to Optimize
     __shared__ float temp1[TILE_SIZE][TILE_SIZE+1];                        // Using shared memory to Optimize
-    temp0[t_x][t_y] = read_data[global_x*N + i*blockDim.x + t_y];
-    temp1[t_y][t_x] = read_data[global_y*N + i*N + t_x];
+    temp0[t_y][t_x] = read_data[global_x*N + i*blockDim.x + t_y];
+    temp1[t_x][t_y] = read_data[global_y*N + i*blockDim.x + t_x];
     __syncthreads();
+    */
     float valueToSubtract = 0.0;
-    for(int k=0;k<TILE_SIZE;k++)
+    for(int r=0;r<TILE_SIZE;r++)
     {
-        valueToSubtract+= temp0[k][t_x]*temp1[k][t_y];
+        valueToSubtract+= read_data[global_x*N + i*blockDim.x + r]*read_data[global_y*N + i*blockDim.x + r];//temp0[r][t_x]*temp1[r][t_y];
     }
     rA2[t_y*TILE_SIZE + t_x]-= valueToSubtract;
     __syncthreads();
@@ -220,29 +222,29 @@ void right_looking_launch_kernel(float* M,int N)
         */
         for(j=i+1;j<N/TILE_SIZE;j++)
         {
-            load_full<<<grid,block>>>(read_data,block_data,i,j,N);
+            trsm_tile<<<grid,block>>>(read_data,i,j,N);
             err = cudaGetLastError();
             if(err != cudaSuccess)
             {
                 fprintf(stderr,"Failed to launch CUDA kernel (error code %s)\n", cudaGetErrorString(err));
                 exit(EXIT_FAILURE);
             }
-            trsm_tile<<<grid,block>>>(read_data,block_data,i,j,N);
-            err = cudaGetLastError();
+            /*
+            err = cudaMemcpy(print_block_data,block_data,TILE_SIZE*TILE_SIZE*sizeof(float),cudaMemcpyDeviceToHost);
             if(err != cudaSuccess)
             {
-                fprintf(stderr,"Failed to launch CUDA kernel (error code %s)\n", cudaGetErrorString(err));
+                fprintf(stderr, "Failed to copy the output matrix M from device to Host (error code %s)\n", cudaGetErrorString(err));
                 exit(EXIT_FAILURE);
             }
-            store_full<<<grid,block>>>(block_data,read_data,i,j,N);
-            err = cudaGetLastError();
-            if(err != cudaSuccess)
+            for(int r=0;r<TILE_SIZE;r++)
             {
-                fprintf(stderr,"Failed to launch CUDA kernel (error code %s)\n", cudaGetErrorString(err));
-                exit(EXIT_FAILURE);
+                for(int s=0;s<TILE_SIZE;s++)
+                    printf("%f\t",print_block_data[s + r*TILE_SIZE]);
+                printf("\n");
             }
-            k=j+1;
-            for(k=j+1;k<((N/TILE_SIZE)-1);k++)
+            printf("%d\n",i);
+            */
+            for(k=i+1;k<((N/TILE_SIZE)-1);k++)
             {
                 load_full<<<grid,block>>>(read_data,block_data,k,j,N);
                 err = cudaGetLastError();
@@ -266,29 +268,26 @@ void right_looking_launch_kernel(float* M,int N)
                     exit(EXIT_FAILURE);
                 }
             }
-            if(k<(N/TILE_SIZE))
+            load_lower<<<grid,block>>>(read_data,block_data,k,j,N);
+            err = cudaGetLastError();
+            if(err != cudaSuccess)
             {
-                load_lower<<<grid,block>>>(read_data,block_data,k,j,N);
-                err = cudaGetLastError();
-                if(err != cudaSuccess)
-                {
-                    fprintf(stderr,"Failed to launch CUDA kernel (error code %s)\n", cudaGetErrorString(err));
-                    exit(EXIT_FAILURE);
-                }            
-                syrk_tile<<<grid,block>>>(read_data,block_data,i,j,k,N);
-                err = cudaGetLastError();
-                if(err != cudaSuccess)
-                {
-                    fprintf(stderr,"Failed to launch CUDA kernel (error code %s)\n", cudaGetErrorString(err));
-                    exit(EXIT_FAILURE);
-                }
-                store_lower<<<grid,block>>>(block_data,read_data,k,j,N);
-                err = cudaGetLastError();
-                if(err != cudaSuccess)
-                {
-                    fprintf(stderr,"Failed to launch CUDA kernel (error code %s)\n", cudaGetErrorString(err));
-                    exit(EXIT_FAILURE);
-                }
+                fprintf(stderr,"Failed to launch CUDA kernel (error code %s)\n", cudaGetErrorString(err));
+                exit(EXIT_FAILURE);
+            }            
+            syrk_tile<<<grid,block>>>(read_data,block_data,i,j,k,N);
+            err = cudaGetLastError();
+            if(err != cudaSuccess)
+            {
+                fprintf(stderr,"Failed to launch CUDA kernel (error code %s)\n", cudaGetErrorString(err));
+                exit(EXIT_FAILURE);
+            }
+            store_lower<<<grid,block>>>(block_data,read_data,k,j,N);
+            err = cudaGetLastError();
+            if(err != cudaSuccess)
+            {
+                fprintf(stderr,"Failed to launch CUDA kernel (error code %s)\n", cudaGetErrorString(err));
+                exit(EXIT_FAILURE);
             }
         }
     }
