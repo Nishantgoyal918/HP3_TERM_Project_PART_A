@@ -1,0 +1,118 @@
+$py(NB=32)\
+
+#define TILE_SIZE $("%d" % NB) // NB // Block SIZE
+
+__device__ void spotrf_tile(float* t_A)
+{
+   
+    int ty = threadIdx.x;  // col
+    int tx = threadIdx.y; // row
+ 
+    $for(int k{0};k<TILE_SIZE;k++)\{
+        // square root of diagonal elements
+ 
+        if(tx==0 && ty==0)\
+            $t_A[k*TILE_SIZE + k] = sqrtf(t_A[k*TILE_SIZE + k])\;
+        __syncthreads();
+ 
+        // division step done parallaly
+        $if(ty<=tx && tx<TILE_SIZE - 1 && ty<TILE_SIZE - 1 && ty == k)\
+        {
+            $t_A[(tx+1)*TILE_SIZE + k]/= t_A[k*TILE_SIZE + k]\;
+        }
+        $endif\
+        __syncthreads();
+ 
+        $if(ty<=tx && tx<TILE_SIZE - 1 && ty<TILE_SIZE - 1 && ty >= k)\
+        {
+            $t_A[(tx+1)*TILE_SIZE + (ty+1)]-= t_A[(tx+1)*TILE_SIZE + k]*t_A[(ty+1)*TILE_SIZE + k]\;
+        }
+        $endif\
+        __syncthreads();
+    }
+    $endfor\
+}
+
+$py(NB=32)\
+#define TILE_SIZE $("%d" % NB) // NB // Block SIZE
+
+__device__ void strsm_tile(float *t_A1, float *t_A2)
+{
+    // t_A2 is current unkonown 
+    
+    int ty = threadIdx.x;
+    int tx = threadIdx.y;
+    
+    $for(i in range(0,NB))
+        // iterations start
+        if(ty==0){
+            $("t_A2[tx*TILE_SIZE + %d]/= t_A1[%d*TILE_SIZE + %d];\n" % (i,i,i))
+        }
+        __syncthreads();
+
+        if(ty>$("%d" % i) && $("%d" % i)<TILE_SIZE-1)
+        {
+            $("t_A2[tx*TILE_SIZE+ty]-= t_A2[tx*TILE_SIZE + %d]*t_A1[ty*TILE_SIZE + %d];\n" %(i,i))
+        }
+        __syncthreads();
+    // end of iterations
+    $endfor\
+}
+
+
+
+$py(NB=32)\
+
+#define TILE_SIZE $("%d" % NB) // NB // Block SIZE
+/*
+ * Function to perform general matrix multiplication 
+ * DOUBT: I think calculation is given wrong in paper it should be rA2[k][n] 
+ */
+ __device__ void sgemm_tile(const float* rA1, const float* rA2, float* rA3)
+ {
+ 
+     int row = threadIdx.y;
+     int column = threadIdx.x;
+ 
+
+     float updatedValue = rA3[row * TILE_SIZE + column];
+ 
+     $for(i in range(0, NB))\
+         $("updatedValue -= rA1[row * TILE_SIZE + %d] * rA2[%d * TILESIZE + column];" % (i, i))
+     $endfor\
+ 
+     rA3[row * TILE_SIZE + column] = updatedValue;
+ }
+
+ $py(NB=32)\
+#include <cuda_runtime.h>
+#include <cuda.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>       // needed for the function sqrtf()
+
+#define TILE_SIZE $("%d" % NB) // NB // Block SIZE
+
+/*
+ * Function to perform rank-k update 
+ * half of the threads working
+ */
+__device__ void ssyrk_tile(float* rA1, float* rA2) 
+{
+    // int row = blockIdx.y * TILE_SIZE + threadIdx.y;
+    // int column = blockIdx.x * TILE_SIZE + threadIdx.x;
+
+    int row = threadIdx.y;
+    int column = threadIdx.x;
+
+    if(column <= row)
+    {
+        float updatedValue = rA2[row * TILE_SIZE + column];
+
+        $for(k in range(0, NB))\
+            $("updatedValue -= rA1[row * TILE_SIZE + %d] * rA1[column * TILE_SIZE + %d];" % (k, k))
+        $endfor\
+
+        rA2[row * TILE_SIZE + column] = updatedValue;
+    }
+}
