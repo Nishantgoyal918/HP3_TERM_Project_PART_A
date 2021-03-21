@@ -1,7 +1,7 @@
 #include "./headers.h"
 
 /*
- * Left looking kernel code (without loop unrolling)
+ * Left looking kernel code with the use of less shered memory (without loop unrolling)
  * INPUT: g_in: pointer of matrix present in Global memory of GPU
  *        N: Matrix size
  * 
@@ -9,8 +9,6 @@
  */
  __global__ void left_looking_kernel_less_mem(float *g_in, int N)
  {
- 
-     // extern __shared__ float s_current_panel[4 * TILE_SIZE * TILE_SIZE];
      extern __shared__ float s_current_panel[];
  
  
@@ -20,7 +18,7 @@
      float *rA3 = NULL;
  
      // no of tiles in a column
-     int no_of_tiles = (N / TILE_SIZE) + (N % TILE_SIZE != 0); // ceil(N / TILE_SIZE)
+     int no_of_tiles = (N / TILE_SIZE) + (N % TILE_SIZE != 0);    // ceil(N / TILE_SIZE)
  
  
      // i: current panel
@@ -37,16 +35,16 @@
  
              if(j >= i)
              {
-                 if(j == i)
+                 if(j == i)         // representing the tile on which spotrf will be carried out
                  {
-                     for(int k=0; k<i; k++)
+                     for(int k=0; k<i; k++)         // k iterates over tiles left of (i,i) tile
                      {
  
-                         rA2 = &s_current_panel[2 * TILE_SIZE * TILE_SIZE];
+                         rA2 = &s_current_panel[2 * TILE_SIZE * TILE_SIZE];     
                          load_full(g_in, rA2, j, k, N);
  
                          rA1 = &s_current_panel[0];
-                         ssyrk_tile(rA1, rA2);
+                         ssyrk_tile(rA1, rA2);                                  // rank-k update on rA1 using rA2
                          __syncthreads();
  
                      }
@@ -56,7 +54,7 @@
                      spotrf_tile(rA1);
                      __syncthreads();
  
-                     store_lower(g_in, rA1, i, i, N);
+                     store_lower(g_in, rA1, i, i, N);                   // storing (i,i) tile back to global memory after calling sporf 
                  }
                  else
                  {
@@ -64,7 +62,7 @@
                      rA3 = &s_current_panel[1 * TILE_SIZE * TILE_SIZE];
                      load_full(g_in, rA3, j, i, N);
  
-                     for(int k=0; k<i; k++)
+                     for(int k=0; k<i; k++)                             // k iterates over tile below (i,i) tile
                      {
  
                          rA1 = &s_current_panel[2 * TILE_SIZE * TILE_SIZE];
@@ -74,7 +72,7 @@
                          load_full(g_in, rA1, j, k, N);
  
  
-                         sgemm_tile(rA1, rA2, rA3);
+                         sgemm_tile(rA1, rA2, rA3);                     // sgemm on tile rA3 using tiles rA1 and rA2
                          __syncthreads();
  
                      }
@@ -83,16 +81,16 @@
                      rA1 = &s_current_panel[0];
                      rA2 = &s_current_panel[1 * TILE_SIZE * TILE_SIZE];
  
-                     strsm_tile(rA1, rA2);
+                     strsm_tile(rA1, rA2);                              // strsm on tile rA2 using tile rA1
                      __syncthreads();
  
-                     store_full(g_in, rA2, j, i, N);
+                     store_full(g_in, rA2, j, i, N);                    // storing back to global memory
                  }
  
              }
              else
              {
-                 store_zeros(g_in, j, i, N);
+                 store_zeros(g_in, j, i, N);                            // stores zero in the tile given by pointer g_in
              }
              
          }
