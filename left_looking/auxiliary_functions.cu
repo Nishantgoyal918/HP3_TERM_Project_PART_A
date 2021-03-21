@@ -1,3 +1,6 @@
+#include "./headers.h"
+
+
 /*
  * Function to perform Choleshky Factorization for a tile
  * input is the pointer to shared memory for a tile given by t_A
