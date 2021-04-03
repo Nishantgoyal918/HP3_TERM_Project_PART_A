@@ -7,7 +7,7 @@ int main()
     if((n%TILE_SIZE)==0)
         N = n;
     else
-        N = ((int) (n/TILE_SIZE)) + 1;
+        N = (((int) (n/TILE_SIZE)) + 1)*TILE_SIZE;
     size_t size = N*N*sizeof(float);
     float *M = (float *)malloc(size);
     if(M == NULL)

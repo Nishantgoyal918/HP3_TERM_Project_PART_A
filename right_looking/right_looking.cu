@@ -123,7 +123,7 @@ __global__ void right_looking_launch_kernel(float* read_data,int N)
         for(j=i+1;j<N/TILE_SIZE;j++)
         {
             trsm_tile(read_data,i,j,N);
-            for(k=i+1;k<((N/TILE_SIZE)-1);k++)
+            for(k=i+1;k<j;k++)
             {
                 load_full(read_data,block_data,k,j,N);
                 syrk_tile(read_data,block_data,i,j,k,N);
