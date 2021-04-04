@@ -76,21 +76,21 @@ __device__ void trsm_tile(float *read_data,int i,int j,int N)
 {
     int global_y = j*blockDim.y + threadIdx.y;
     int global_x = i*blockDim.x + threadIdx.x;
-	int t_x = threadIdx.x;
+    int t_x = threadIdx.x;
     int t_y = threadIdx.y;
-	for(int s=0;s<TILE_SIZE;s++)
+    for(int s=0;s<TILE_SIZE;s++)
     {
-		if(t_x==s)
+	if(t_x==s)
         {
-			read_data[global_y*N + global_x]/= read_data[global_x*N + global_x];
-		}
-		__syncthreads();
-		if(t_x > s)
-        {
-			read_data[global_y*N + global_x]-= read_data[global_x*N + global_x - t_x + s]*read_data[global_y*N + global_x - t_x + s];
-		}
-		__syncthreads();
+	    read_data[global_y*N + global_x]/= read_data[global_x*N + global_x];
 	}
+	__syncthreads();
+	if(t_x > s)
+        {
+	    read_data[global_y*N + global_x]-= read_data[global_x*N + global_x - t_x + s]*read_data[global_y*N + global_x - t_x + s];
+	}
+	__syncthreads();
+    }
 }
 __device__ void syrk_tile(float* read_data,float* rA2,int i,int j,int k,int N) 
 {
