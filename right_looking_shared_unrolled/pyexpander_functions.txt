@@ -1,0 +1,91 @@
+$py(TILE_SIZE=16)\
+$py(N=32)\
+// TILE_SIZE and N are variable/parameter here
+$("#define TILE_SIZE %d" % (TILE_SIZE))
+
+__device__ void store_full_row(float* read_data,float* write_data,int i,int N)
+{
+    int global_y;
+    int global_x = i*blockDim.x + threadIdx.x;
+    $for(j in range(0,int(N/TILE_SIZE)))\
+    $("")
+    $("global_y = %d*blockDim.y + threadIdx.y;" % (j))
+    $("write_data[global_y*N + global_x] = read_data[threadIdx.x + (TILE_SIZE+1)*global_y];")
+    $endfor\
+
+    __syncthreads();
+}
+__device__ void load_full_row(float* read_data,float* write_data,int i,int N)
+{
+    int global_y;
+    int global_x = i*blockDim.x + threadIdx.x;
+    $for(j in range(0,int(N/TILE_SIZE)))\
+    $("")
+    $("global_y = %d*blockDim.y + threadIdx.y;" % (j))
+    $("write_data[threadIdx.x + (TILE_SIZE+1)*global_y] = read_data[global_y*N + global_x];")
+    $endfor\
+
+    __syncthreads();
+}
+__device__ void potrf_tile(float* t_A)
+{
+    int t_x = threadIdx.x;
+    int t_y = threadIdx.y;
+    __shared__ float temp2;
+    $for(k in range(0,TILE_SIZE))\
+    $("")
+    $("if(t_x==t_y && t_x==%d)" % (k))
+    $("{")
+    $("    t_A[%d*(TILE_SIZE+1) + %d] = sqrtf(t_A[%d*(TILE_SIZE+1) + %d]);" % (k,k,k,k))
+    $("    temp2 = t_A[%d*(TILE_SIZE+1) + %d];" % (k,k))
+    $("}")
+    $("__syncthreads();")
+    $("if(t_x<t_y && t_x == %d)" % (k))
+    $("{")
+    $("    t_A[t_y*(TILE_SIZE+1) + %d]/= temp2;" % (k))
+    $("}")
+    $("__syncthreads();")
+    $("if(%d<t_y && %d<t_x && t_x<=t_y)" % (k,k))
+    $("{")
+    $("    t_A[t_y*(TILE_SIZE+1) + t_x]-= t_A[t_x*(TILE_SIZE+1) + %d]*t_A[t_y*(TILE_SIZE+1) + %d];" % (k,k))
+    $("}")
+    $("__syncthreads();")
+    $endfor\
+
+}
+__device__ void trsm_tile(float *row_data,int i,int j,int N)
+{
+    int global_y = j*blockDim.y + threadIdx.y;
+    int global_x = i*blockDim.x + threadIdx.x;
+    int t_x = threadIdx.x;
+    int t_y = threadIdx.y;
+    $for(s in range(0,TILE_SIZE))\
+    $("")
+    $("if(t_x==%d)" % (s))
+    $("{")
+    $("    row_data[global_y*(TILE_SIZE+1) + t_x]/= row_data[global_x*(TILE_SIZE+1) + t_x];")
+    $("}")
+    $("__syncthreads();")
+    $("if(t_x > %d)" % (s))
+    $("{")
+    $("    row_data[global_y*(TILE_SIZE+1) + t_x]-= row_data[global_x*(TILE_SIZE+1) +  %d]*row_data[global_y*(TILE_SIZE+1) + %d];" % (s,s))
+    $("}")
+    $("__syncthreads();")
+    $endfor\
+
+}
+__device__ void syrk_tile(float* row_data,float* edit_data,int i,int j,int N) 
+{
+    int global_y = j*blockDim.y + threadIdx.y;
+    int global_x = i*blockDim.x + threadIdx.x;
+    int t_y = threadIdx.y;
+    int t_x = threadIdx.x;
+    float valueToSubtract = 0.0;
+    $for(r in range(0,TILE_SIZE))\
+    $("")
+    $("valueToSubtract+= row_data[%d + global_y*(TILE_SIZE+1)]*row_data[%d + global_x*(TILE_SIZE+1)];" % (r,r))
+    $endfor\
+    
+    edit_data[t_y*(TILE_SIZE+1) + t_x]-= valueToSubtract;
+    __syncthreads();
+}
