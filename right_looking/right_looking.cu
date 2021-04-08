@@ -3,7 +3,7 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<cmath>
-#define TILE_SIZE 32            //Tile size and block size, both are taken as 32
+#define TILE_SIZE 4            //Tile size and block size, both are taken as 32
 __device__ void store_full(float*,float*,int,int,int);
 __device__ void load_full(float*,float*,int,int,int);
 __device__ void store_lower(float*,float*,int,int,int);
@@ -11,6 +11,7 @@ __device__ void load_lower(float*,float*,int,int,int);
 __device__ void potrf_tile(float*);
 __device__ void trsm_tile(float*,int,int,int);
 __device__ void syrk_tile(float*,float*,int,int,int);
+__device__ void store_zeros(float*,int);
 __global__ void right_looking_launch_kernel(float*,int);
 
 __device__ void store_full(float* read_data,float* write_data,int i,int j,int N)
@@ -111,6 +112,18 @@ __device__ void syrk_tile(float* read_data,float* rA2,int i,int j,int k,int N)
     rA2[t_y*(TILE_SIZE+1) + t_x]-= valueToSubtract;
     __syncthreads();
 }
+__device__ void store_zeros(float* A,int N)
+{
+    int t_y = threadIdx.y;
+    int t_x = threadIdx.x;
+    int i,j;
+    for(i=0;i<N/TILE_SIZE-1;i++)
+    {
+        for(j=i+1;j<N/TILE_SIZE;j++)
+            A[j*blockDim.x + t_x + (i*blockDim.y + t_y)*N] = 0.0;
+    }
+    __syncthreads();
+}
 __global__ void right_looking_launch_kernel(float* read_data,int N)
 {
     __shared__ float block_data[TILE_SIZE*(TILE_SIZE+1)];               // Using TILE_SIZE+1 to avoid Band-conflict in Shared Memory
@@ -134,4 +147,5 @@ __global__ void right_looking_launch_kernel(float* read_data,int N)
             store_lower(block_data,read_data,k,j,N);
         }
     }
+    store_zeros(read_data,N);
 }
