@@ -56,7 +56,12 @@ int main()
     for(i=0;i<n;i++)
     {
         for(j=0;j<n;j++)
-            printf("%f\t",M[i*N + j]);
+        {
+            if(j<=i)
+                printf("%f\t",M[i*N + j]);
+            else
+                printf("%f\t",0.0);
+        }
         printf("\n");
     }
     err = cudaFree(read_data);

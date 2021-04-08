@@ -45,7 +45,7 @@ int main()
     printf("Testing for matrix M [%dx%d]\n",N,N);
     dim3 grid(1,1,1);
     dim3 block(TILE_SIZE,TILE_SIZE,1);
-    size_t shared_size = (N*(TILE_SIZE+1) + TILE_SIZE*(TILE_SIZE+1) + 1)*sizeof(float);
+    size_t shared_size = (N*TILE_SIZE + TILE_SIZE*TILE_SIZE + 1)*sizeof(float);
     right_looking_launch_kernel<<<grid,block,shared_size>>>(read_data,N);
     err = cudaMemcpy(M,read_data,size,cudaMemcpyDeviceToHost);
     if(err != cudaSuccess)
@@ -57,12 +57,7 @@ int main()
     for(i=0;i<n;i++)
     {
         for(j=0;j<n;j++)
-        {
-            if(j<=i)
-                printf("%f\t",M[i*N + j]);
-            else
-                printf("%f\t",0.0);
-        }
+            printf("%f\t",M[i*N + j]);
         printf("\n");
     }
     err = cudaFree(read_data);

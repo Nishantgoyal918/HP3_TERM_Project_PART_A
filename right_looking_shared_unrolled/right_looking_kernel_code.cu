@@ -1,6 +1,6 @@
 __global__ void right_looking_launch_kernel(float* read_data,int N)
 {
-    __shared__ float tile_data[TILE_SIZE*(TILE_SIZE+1)];                // Using TILE_SIZE+1 to avoid Band-conflict in Shared Memory
+    __shared__ float tile_data[TILE_SIZE*TILE_SIZE];
     extern __shared__ float row_data[];
     int i,j,k;
     for(i=0;i<N/TILE_SIZE;i++)
