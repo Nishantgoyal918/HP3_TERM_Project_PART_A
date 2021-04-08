@@ -24,4 +24,5 @@ __global__ void right_looking_launch_kernel(float* read_data,int N)
         }
         store_full_row(row_data,read_data,i,N);
     }
+    store_zeros(read_data,N);
 }

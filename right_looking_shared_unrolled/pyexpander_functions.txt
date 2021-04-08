@@ -1,5 +1,5 @@
-$py(TILE_SIZE=16)\
-$py(N=32)\
+$py(TILE_SIZE=4)\
+$py(N=16)\
 // TILE_SIZE and N are variable/parameter here
 $("#define TILE_SIZE %d" % (TILE_SIZE))
 
@@ -87,5 +87,18 @@ __device__ void syrk_tile(float* row_data,float* edit_data,int i,int j,int N)
     $endfor\
     
     edit_data[t_y*(TILE_SIZE+1) + t_x]-= valueToSubtract;
+    __syncthreads();
+}
+__device__ void store_zeros(float* A,int N)
+{
+    int t_y = threadIdx.y;
+    int t_x = threadIdx.x;
+    $for(i in range(0,int(N/TILE_SIZE)-1))\
+        $for(j in range(i+1,int(N/TILE_SIZE)))\
+    $("")
+    $("A[%d*blockDim.x + t_x + (%d*blockDim.y + t_y)*N] = 0.0;" % (j,i))
+        $endfor\
+    $endfor\
+
     __syncthreads();
 }
